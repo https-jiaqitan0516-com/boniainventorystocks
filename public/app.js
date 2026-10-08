@@ -225,12 +225,12 @@ async function retryImages(state){
 }
 
 // ---- Tabs ----
-function setView(v){view=v;const inv=v==='inventory';
-  $('inventoryView').hidden=!inv;$('inventoryGrid').hidden=!inv;$('seedingView').hidden=inv;$('seedingGridWrap').hidden=inv;
-  $('addBtn').hidden=!inv;$('addSeedingBtn').hidden=inv;
+function setView(v){view=v;const inv=v==='inventory';const seed=v==='seeding',styling=v==='styling';
+  $('inventoryView').hidden=!inv;$('inventoryGrid').hidden=!inv;$('seedingView').hidden=!seed;$('seedingGridWrap').hidden=!seed;$('stylingView').hidden=!styling;
+  $('addBtn').hidden=!inv;$('addSeedingBtn').hidden=!seed;
   document.querySelectorAll('[data-view-tab]').forEach(t=>{const on=t.dataset.viewTab===v;t.classList.toggle('active',on);t.setAttribute('aria-selected',String(on))});
-  if(inv)render();else renderSeeding()}
-document.querySelectorAll('[data-view-tab]').forEach(t=>t.onclick=()=>setView(t.dataset.viewTab));
+  if(inv)render();else if(seed)renderSeeding();else renderStyling()}
+document.querySelectorAll('[data-view-tab]').forEach(t=>t.onclick=()=>setView(t.dataset.viewTab));const styledLook={top:'',bottom:'',extra:''};let clothingCategory='Tops',extraCategory='Bags';function renderStyling(){const makeTabs=(id,choices,current)=>$(id).innerHTML=choices.map(c=>'<button type="button" class="styling-tab'+(c===current?' active':'')+'">'+c+'</button>').join('');makeTabs('stylingClothingTabs',['Tops','Bottoms'],clothingCategory);makeTabs('stylingExtraTabs',['Bags','Accessories'],extraCategory);const cards=(category,slot)=>items.filter(p=>p.category===category&&p.image).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))).map(p=>'<button type="button" class="styling-option'+(styledLook[slot]===p.id?' selected':'')+'" data-style-id="'+esc(p.id)+'" data-style-slot="'+slot+'"><img src="'+esc(p.image)+'" alt=""><span><b>'+esc(p.name||'Untitled product')+'</b><small>'+esc(p.sku||p.gender||p.category)+'</small></span></button>').join('')||'<div class="styling-empty">No product photos in this category yet. Add one in Inventory first.</div>';const slot=clothingCategory==='Tops'?'top':'bottom';$('stylingClothingOptions').innerHTML=cards(clothingCategory,slot);$('stylingExtraOptions').innerHTML=cards(extraCategory,'extra');$('stylingLayers').innerHTML=[['top','top'],['bottom','bottom'],['extra','extra']].map(([k,c])=>{const p=byId(styledLook[k]);return p?'<img class="styling-layer '+c+'" src="'+esc(p.image)+'" alt="'+esc(p.name||p.category)+'">':''}).join('');$('stylingSelections').innerHTML=[['top','top'],['bottom','bottom'],['extra','extra']].map(([k])=>{const p=byId(styledLook[k]);return p?'<span class="styling-chip">'+esc(p.name||p.category)+'<button type="button" data-style-remove="'+k+'">×</button></span>':''}).join('')}$('stylingClothingTabs').onclick=e=>{if(e.target.tagName==='BUTTON'){clothingCategory=e.target.textContent;renderStyling()}};$('stylingExtraTabs').onclick=e=>{if(e.target.tagName==='BUTTON'){extraCategory=e.target.textContent;renderStyling()}};$('stylingView').onclick=e=>{const r=e.target.closest('[data-style-remove]');if(r){styledLook[r.dataset.styleRemove]='';renderStyling();return}const b=e.target.closest('[data-style-id]');if(b){styledLook[b.dataset.styleSlot]=b.dataset.styleId;renderStyling()}};$('stylingClear').onclick=()=>{styledLook.top='';styledLook.bottom='';styledLook.extra='';renderStyling()};
 
 // ---- Larger photo viewer (for showing products to KOLs) ----
 let viewerReturnFocus=null;
