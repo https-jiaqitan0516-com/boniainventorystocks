@@ -80,3 +80,15 @@
 .inventory-table .table-photo .photo-view img{display:block!important;width:100%!important;height:100%!important;min-width:100%!important;object-fit:cover!important}
 @media(max-width:700px){.inventory-table th:first-child,.inventory-table td:first-child{width:78px!important;min-width:78px!important}.inventory-table .photo-cell{width:72px!important;min-width:72px!important}.inventory-table .table-photo{flex-basis:56px!important;width:56px!important;min-width:56px!important;height:56px!important}.inventory-table .table-photo .photo-view{flex-basis:52px!important;width:52px!important;min-width:52px!important;height:52px!important;max-width:52px!important}}
 </style>
+
+
+<style>
+/* Mobile photo controls: keep actions below the full cover image. */
+@media(max-width:700px){
+  .inventory-table tbody td:first-child{width:112px!important;min-width:112px!important;padding:6px 2px!important;vertical-align:top!important}
+  .inventory-table .photo-cell{width:104px!important;min-width:104px!important;align-items:center!important;gap:6px!important}
+  .inventory-table .table-photo.has-image{position:relative!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:flex-start!important;gap:5px!important;width:100px!important;min-width:100px!important;height:auto!important;min-height:0!important;max-width:100px!important;background:transparent!important;overflow:visible!important}
+  .inventory-table .table-photo.has-image .photo-view{display:block!important;flex:none!important;width:68px!important;min-width:68px!important;height:68px!important;max-width:68px!important;margin:0!important}
+  .inventory-table .table-photo.has-image .photo-change,.inventory-table .table-photo.has-image>label:not(.photo-change){display:inline-flex!important;position:static!important;left:auto!important;bottom:auto!important;transform:none!important;opacity:1!important;align-items:center!important;justify-content:center!important;margin:0!important;white-space:nowrap!important;max-width:100%!important;font-size:10px!important;padding:4px 9px!important;line-height:1.2!important}
+}
+</style>
