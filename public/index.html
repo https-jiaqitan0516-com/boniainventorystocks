@@ -98,3 +98,113 @@
 /* The existing main photo is the cover; hide the Cover replacement control in the product list. */
 .inventory-table .table-photo.has-image .photo-change{display:none!important}
 </style>
+
+
+<style>
+/* Mobile inventory: readable vertical cards instead of a squeezed desktop table. */
+@media (max-width: 700px) {
+  .shell { padding: 22px 14px 40px; }
+  .table-scroll { overflow: visible !important; border: 0; box-shadow: none; background: transparent; }
+  .inventory-table, .seeding-table { display: block !important; width: 100% !important; min-width: 0 !important; border-collapse: separate; }
+  .inventory-table thead, .seeding-table thead { display: none !important; }
+  .inventory-table tbody, .seeding-table tbody { display: block; width: 100%; }
+  .inventory-table tbody tr, .seeding-table tbody tr { display: block; width: 100%; margin: 0 0 14px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fffefa; box-shadow: 0 2px 8px rgba(88,69,20,.06); }
+  .inventory-table tbody td, .seeding-table tbody td { display: grid; grid-template-columns: 88px minmax(0,1fr); align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 7px 0; border: 0; border-bottom: 1px solid #f1ead7; overflow-wrap: anywhere; }
+  .inventory-table tbody td:last-child, .seeding-table tbody td:last-child { border-bottom: 0; }
+  .inventory-table tbody td::before, .seeding-table tbody td::before { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .inventory-table tbody td:nth-child(1) { display: block; padding: 0 0 10px; }
+  .inventory-table tbody td:nth-child(1)::before { content: none; }
+  .inventory-table tbody td:nth-child(1) .table-photo { width: 100%; height: 210px; margin: 0 auto; border-radius: 9px; }
+  .inventory-table tbody td:nth-child(1) .table-photo img { object-fit: contain; }
+  .inventory-table tbody td:nth-child(1) .photo-view { width: 100%; height: 100%; padding: 0; border: 0; background: transparent; }
+  .inventory-table tbody td:nth-child(1) .photo-change { display: none !important; }
+  .inventory-table tbody td:nth-child(1) .add-photos, .inventory-table tbody td:nth-child(1) [data-add-photos] { display: inline-flex; margin-top: 8px; }
+  .inventory-table tbody td:nth-child(2) { grid-template-columns: 1fr; }
+  .inventory-table tbody td:nth-child(2)::before { content: none; }
+  .inventory-table tbody td:nth-child(2) textarea { font-size: 16px; font-weight: 650; min-height: 38px; }
+  .inventory-table tbody td:nth-child(3)::before { content: "Price"; }
+  .inventory-table tbody td:nth-child(4)::before { content: "SKU"; }
+  .inventory-table tbody td:nth-child(5)::before { content: "Quantity"; }
+  .inventory-table tbody td:nth-child(6)::before { content: "Date"; }
+  .inventory-table tbody td:nth-child(7)::before { content: "Gender"; }
+  .inventory-table tbody td:nth-child(8)::before { content: "Category"; }
+  .inventory-table tbody td:nth-child(9)::before { content: "Size"; }
+  .inventory-table tbody td:nth-child(10) { grid-template-columns: 1fr; }
+  .inventory-table tbody td:nth-child(10)::before { content: "Description"; }
+  .inventory-table tbody td:nth-child(11) { display: block; }
+  .inventory-table tbody td:nth-child(11)::before { content: none; }
+  .inventory-table .table-input, .inventory-table .table-select, .inventory-table .table-description, .seeding-table .table-input, .seeding-table .table-select, .seeding-table .table-description { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; font-size: 16px; }
+  .inventory-table .table-description { min-width: 0; height: 64px; }
+  .inventory-table .size-grid { grid-template-columns: repeat(4, minmax(0,1fr)); width: 100%; }
+  .inventory-table .size-qty { min-width: 0; }
+  .inventory-table .row-actions, .seeding-table .row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .seeding-table tbody td:nth-child(1) { display: block; padding: 0 0 10px; }
+  .seeding-table tbody td:nth-child(1)::before { content: none; }
+  .seeding-table tbody td:nth-child(1) .table-photo { width: 100%; height: 150px; }
+  .seeding-table tbody td:nth-child(2)::before { content: "KOL / Creator"; }
+  .seeding-table tbody td:nth-child(3)::before { content: "Product"; }
+  .seeding-table tbody td:nth-child(4)::before { content: "Size"; }
+  .seeding-table tbody td:nth-child(5)::before { content: "Qty Sent"; }
+  .seeding-table tbody td:nth-child(6)::before { content: "Date Sent"; }
+  .seeding-table tbody td:nth-child(7)::before { content: "Return Status"; }
+  .seeding-table tbody td:nth-child(8)::before { content: "Return Date"; }
+  .seeding-table tbody td:nth-child(9) { grid-template-columns: 1fr; }
+  .seeding-table tbody td:nth-child(9)::before { content: "Notes"; }
+  .seeding-table tbody td:nth-child(10) { display: block; }
+  .seeding-table tbody td:nth-child(10)::before { content: none; }
+  .tools { width: 100%; }
+  .search { width: 100%; max-width: none; }
+  .sort { max-width: 100%; }
+}
+</style>
+
+
+<style>
+@media (max-width: 700px) {
+  .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  .summary .card { min-width: 0; padding: 11px 8px; }
+  .summary .metric { font-size: clamp(16px, 5vw, 21px); overflow-wrap: anywhere; }
+  .summary .label, .summary .unit { font-size: 10px; }
+}
+</style>
+
+
+<style>
+/* On phones, keep the inventory as a readable wide table that can be swiped sideways. */
+@media (max-width: 700px) {
+  .table-scroll { display: block !important; width: 100% !important; max-width: 100vw; overflow-x: auto !important; overflow-y: visible !important; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 12px; background: #fffefa; }
+  .inventory-table, .seeding-table { display: table !important; width: auto !important; min-width: 1380px !important; table-layout: auto !important; border-collapse: separate !important; }
+  .seeding-table { min-width: 1220px !important; }
+  .inventory-table thead, .seeding-table thead { display: table-header-group !important; }
+  .inventory-table tbody, .seeding-table tbody { display: table-row-group !important; width: auto !important; }
+  .inventory-table tbody tr, .seeding-table tbody tr { display: table-row !important; width: auto !important; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+  .inventory-table tbody td, .seeding-table tbody td { display: table-cell !important; width: auto !important; min-width: 0 !important; padding: 8px 9px !important; border-bottom: 1px solid #f1ead7 !important; overflow: visible !important; overflow-wrap: normal !important; word-break: normal !important; vertical-align: middle !important; }
+  .inventory-table tbody td::before, .seeding-table tbody td::before { display: none !important; content: none !important; }
+  .inventory-table th, .seeding-table th { position: sticky; top: 0; font-size: 10px !important; letter-spacing: .06em !important; padding: 10px 9px !important; white-space: nowrap; }
+  .inventory-table td:nth-child(1) { width: 90px !important; min-width: 90px !important; }
+  .inventory-table td:nth-child(2) { width: 210px !important; min-width: 210px !important; }
+  .inventory-table td:nth-child(3) { width: 110px !important; min-width: 110px !important; }
+  .inventory-table td:nth-child(4) { width: 140px !important; min-width: 140px !important; }
+  .inventory-table td:nth-child(5) { width: 110px !important; min-width: 110px !important; }
+  .inventory-table td:nth-child(6) { width: 115px !important; min-width: 115px !important; }
+  .inventory-table td:nth-child(7), .inventory-table td:nth-child(8) { width: 145px !important; min-width: 145px !important; }
+  .inventory-table td:nth-child(9) { width: 200px !important; min-width: 200px !important; }
+  .inventory-table td:nth-child(10) { width: 220px !important; min-width: 220px !important; }
+  .inventory-table td:nth-child(11) { width: 100px !important; min-width: 100px !important; }
+  .inventory-table .table-input, .inventory-table .table-select, .inventory-table .table-description, .seeding-table .table-input, .seeding-table .table-select, .seeding-table .table-description { box-sizing: border-box !important; width: 100% !important; min-width: 0 !important; max-width: none !important; font-size: 14px !important; padding: 8px 7px !important; }
+  .inventory-table .table-name { min-width: 0 !important; height: auto !important; min-height: 38px !important; font-size: 14px !important; }
+  .inventory-table .table-description { height: 64px !important; }
+  .inventory-table .date-input { min-width: 0 !important; font-size: 14px !important; }
+  .inventory-table .table-photo { width: 64px !important; min-width: 64px !important; max-width: 64px !important; height: 64px !important; aspect-ratio: auto !important; }
+  .inventory-table .table-photo .photo-view { width: 100% !important; min-width: 0 !important; max-width: none !important; height: 100% !important; }
+  .inventory-table .table-photo .photo-change { display: none !important; }
+  .inventory-table .size-grid { grid-template-columns: repeat(4, 44px) !important; gap: 4px !important; }
+  .inventory-table .size-qty { padding: 4px 2px !important; }
+  .inventory-table .size-qty input { font-size: 14px !important; padding: 4px 0 !important; }
+  .seeding-table td:nth-child(1) { width: 80px !important; min-width: 80px !important; }
+  .seeding-table td:nth-child(2), .seeding-table td:nth-child(3), .seeding-table td:nth-child(9) { min-width: 200px !important; }
+  .seeding-table .seeding-product { min-width: 185px !important; max-width: none !important; }
+  .seeding-table .seeding-photo { width: 52px !important; min-width: 52px !important; max-width: 52px !important; height: 52px !important; }
+  .seeding-table td:nth-child(10) { min-width: 130px !important; }
+}
+</style>
