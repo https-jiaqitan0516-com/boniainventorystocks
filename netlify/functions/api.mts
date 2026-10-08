@@ -610,8 +610,6 @@ async function exportWorkbook(req: Request) {
   inventory.columns = [
     { header: "Product photo", key: "photo", width: 18 },
     { header: "Photo status", key: "photoStatus", width: 18 },
-    { header: "Photo reference", key: "photoReference", width: 48 },
-    { header: "Product ID", key: "id", width: 24 },
     { header: "Name", key: "name", width: 28 },
     { header: "Price (RM)", key: "price", width: 14 },
     { header: "SKU", key: "sku", width: 18 },
@@ -629,7 +627,7 @@ async function exportWorkbook(req: Request) {
     { header: "Updated at", key: "updatedAt", width: 24 },
   ];
   inventory.views = [{ state: "frozen", ySplit: 1 }];
-  inventory.autoFilter = "A1:S1";
+  inventory.autoFilter = "A1:Q1";
 
   const productRows = await db
     .select({ product: products, imageData: productImages.data, imageMimeType: productImages.mimeType })
@@ -637,15 +635,11 @@ async function exportWorkbook(req: Request) {
     .leftJoin(productImages, eq(productImages.productId, products.id))
     .orderBy(asc(products.createdAt), asc(products.id));
 
-  const origin = new URL(req.url).origin;
   for (const { product, imageData, imageMimeType } of productRows) {
-    const reference = `${origin}/api/images/${encodeURIComponent(product.id)}`;
     const sizes = normalizeSizes(product.sizeQuantities);
     const row = inventory.addRow({
       photo: "",
       photoStatus: "Photo missing",
-      photoReference: reference,
-      id: product.id,
       name: product.name,
       price: product.price == null ? "" : Number(product.price),
       sku: product.sku,
@@ -688,7 +682,6 @@ async function exportWorkbook(req: Request) {
   seeding.columns = [
     { header: "Record ID", key: "id", width: 24 },
     { header: "KOL / Creator", key: "kolName", width: 26 },
-    { header: "Product ID", key: "productId", width: 24 },
     { header: "Product", key: "productName", width: 30 },
     { header: "SKU", key: "productSku", width: 18 },
     { header: "Size", key: "size", width: 12 },
@@ -701,13 +694,12 @@ async function exportWorkbook(req: Request) {
     { header: "Updated at", key: "updatedAt", width: 24 },
   ];
   seeding.views = [{ state: "frozen", ySplit: 1 }];
-  seeding.autoFilter = "A1:M1";
+  seeding.autoFilter = "A1:L1";
   const seedingRows = await db.select().from(kolSeeding).orderBy(desc(kolSeeding.createdAt), desc(kolSeeding.id));
   for (const record of seedingRows) {
     seeding.addRow({
       id: record.id,
       kolName: record.kolName,
-      productId: record.productId ?? "",
       productName: record.productName,
       productSku: record.productSku,
       size: record.size,
