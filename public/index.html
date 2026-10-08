@@ -157,3 +157,13 @@
   .sort { max-width: 100%; }
 }
 </style>
+
+
+<style>
+@media (max-width: 700px) {
+  .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  .summary .card { min-width: 0; padding: 11px 8px; }
+  .summary .metric { font-size: clamp(16px, 5vw, 21px); overflow-wrap: anywhere; }
+  .summary .label, .summary .unit { font-size: 10px; }
+}
+</style>
