@@ -33,6 +33,18 @@ const EDITABLE = new Set<string>([...SNAPSHOT_KEYS, "sizeQuantity"]);
 const MAX_SIZE_QUANTITY = 100_000_000;
 const HISTORY_LIMIT = 500;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const PHOTO_GALLERY_MIME = "application/vnd.bonia.photo-gallery+json";
+const MAX_PRODUCT_PHOTOS = 8;
+
+type StoredPhoto = { mimeType: string; data: string };
+function storedPhotos(mimeType?: string | null, data?: string | null): StoredPhoto[] {
+  if (!mimeType || !data) return [];
+  if (mimeType !== PHOTO_GALLERY_MIME) return [{ mimeType, data }];
+  try {
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed.filter((p) => p && ["image/jpeg", "image/png", "image/webp"].includes(p.mimeType) && typeof p.data === "string") : [];
+  } catch { return []; }
+}
 
 type ProductRow = typeof products.$inferSelect;
 type SeedingRow = typeof kolSeeding.$inferSelect;
@@ -157,7 +169,8 @@ function normalizeProduct(input: Record<string, unknown>): ProductValues {
   return out;
 }
 
-function toClient(row: ProductRow, imageUpdatedAt?: Date | null) {
+function toClient(row: ProductRow, imageUpdatedAt?: Date | null, photos: StoredPhoto[] = []) {
+  const version = imageUpdatedAt ? imageUpdatedAt.getTime() : 0;
   return {
     id: row.id,
     name: row.name,
@@ -170,7 +183,8 @@ function toClient(row: ProductRow, imageUpdatedAt?: Date | null) {
     size: row.size,
     sizeQuantities: normalizeSizes(row.sizeQuantities),
     description: row.description,
-    image: imageUpdatedAt ? `/api/images/${encodeURIComponent(row.id)}?v=${imageUpdatedAt.getTime()}` : "",
+    image: photos.length ? `/api/images/${encodeURIComponent(row.id)}/0?v=${version}` : imageUpdatedAt ? `/api/images/${encodeURIComponent(row.id)}?v=${version}` : "",
+    images: photos.map((_, index) => `/api/images/${encodeURIComponent(row.id)}/${index}?v=${version}`),
   };
 }
 
@@ -203,7 +217,7 @@ async function readJson(req: Request): Promise<Record<string, any>> {
 
 async function getState() {
   const rows = await db
-    .select({ product: products, imageUpdatedAt: productImages.updatedAt })
+    .select({ product: products, imageUpdatedAt: productImages.updatedAt, imageData: productImages.data, imageMimeType: productImages.mimeType })
     .from(products)
     .leftJoin(productImages, eq(productImages.productId, products.id))
     .orderBy(asc(products.createdAt), asc(products.id));
@@ -212,7 +226,7 @@ async function getState() {
   const seeding = await db.select().from(kolSeeding).orderBy(desc(kolSeeding.createdAt), desc(kolSeeding.id));
   return Response.json(
     {
-      products: rows.map((r) => toClient(r.product, r.imageUpdatedAt)),
+      products: rows.map((r) => toClient(r.product, r.imageUpdatedAt, storedPhotos(r.imageMimeType, r.imageData))),
       history: entries.map(historyToClient),
       seeding: seeding.map(seedingToClient),
       canvaUrl: canva?.value ?? "",
@@ -468,16 +482,16 @@ async function putImage(req: Request, id: string) {
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(products).where(eq(products.id, id)).for("update");
     if (!row) throw new HttpError(404, "Product not found");
-    const [existing] = await tx.select({ updatedAt: productImages.updatedAt }).from(productImages).where(eq(productImages.productId, id));
+    const [existing] = await tx.select().from(productImages).where(eq(productImages.productId, id));
     // Import uploads only fill in missing photos; they never replace one already in the database.
     if (fromImport && existing) {
-      return Response.json({ product: toClient(row, existing.updatedAt), entry: null, skipped: true });
+      return Response.json({ product: toClient(row, existing.updatedAt, storedPhotos(existing.mimeType, existing.data)), entry: null, skipped: true });
     }
     const now = new Date();
     await tx
       .insert(productImages)
-      .values({ productId: id, mimeType, data, updatedAt: now })
-      .onConflictDoUpdate({ target: productImages.productId, set: { mimeType, data, updatedAt: now } });
+      .values({ productId: id, mimeType: PHOTO_GALLERY_MIME, data: JSON.stringify([{ mimeType, data }]), updatedAt: now })
+      .onConflictDoUpdate({ target: productImages.productId, set: { mimeType: PHOTO_GALLERY_MIME, data: JSON.stringify([{ mimeType, data }]), updatedAt: now } });
     let entry = null;
     if (!fromImport) {
       const snap = snapshot(row);
@@ -486,16 +500,105 @@ async function putImage(req: Request, id: string) {
         .values({ id: uid(), action: "Updated product image", itemId: id, name: displayName(row), before: snap, after: snap })
         .returning();
     }
-    return Response.json({ product: toClient(row, now), entry: entry && historyToClient(entry) });
+    return Response.json({ product: toClient(row, now, [{ mimeType, data }]), entry: entry && historyToClient(entry) });
   });
 }
 
-async function getImage(id: string) {
+async function addProductPhoto(req: Request, id: string) {
+  const body = await readJson(req);
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(body.image ?? ""));
+  if (!match) throw new HttpError(400, "Please upload a JPEG, PNG or WebP image");
+  const [, mimeType, data] = match;
+  if (data.length * 0.75 > MAX_IMAGE_BYTES) throw new HttpError(413, "Image is too large");
+  return db.transaction(async (tx) => {
+    const [row] = await tx.select().from(products).where(eq(products.id, id)).for("update");
+    if (!row) throw new HttpError(404, "Product not found");
+    const [existing] = await tx.select().from(productImages).where(eq(productImages.productId, id)).for("update");
+    if (!existing) throw new HttpError(400, "Add the first product photo before adding more");
+    const photos = storedPhotos(existing.mimeType, existing.data);
+    if (photos.length >= MAX_PRODUCT_PHOTOS) throw new HttpError(400, `A product can have up to ${MAX_PRODUCT_PHOTOS} photos`);
+    photos.push({ mimeType, data });
+    const now = new Date();
+    await tx.update(productImages).set({ mimeType: PHOTO_GALLERY_MIME, data: JSON.stringify(photos), updatedAt: now }).where(eq(productImages.productId, id));
+    const snap = snapshot(row);
+    const [entry] = await tx.insert(history).values({ id: uid(), action: "Added product photo", itemId: id, name: displayName(row), before: snap, after: snap }).returning();
+    return Response.json({ product: toClient(row, now, photos), entry: historyToClient(entry) });
+  });
+}
+
+async function getImage(id: string, index = 0) {
   const [img] = await db.select().from(productImages).where(eq(productImages.productId, id));
   if (!img) return new Response("Not found", { status: 404 });
-  return new Response(Buffer.from(img.data, "base64"), {
-    headers: { "content-type": img.mimeType, "cache-control": "private, max-age=31536000, immutable" },
+  const photo = storedPhotos(img.mimeType, img.data)[index];
+  if (!photo) return new Response("Not found", { status: 404 });
+  return new Response(Buffer.from(photo.data, "base64"), {
+    headers: { "content-type": photo.mimeType, "cache-control": "private, max-age=31536000, immutable" },
   });
+}
+
+const TRY_ON_ENDPOINT = "fal-ai/image-apps-v2/virtual-try-on";
+const MAX_TRY_ON_INPUT_BYTES = 2 * 1024 * 1024;
+
+async function startTryOn(req: Request) {
+  const falKey = process.env.FAL_KEY;
+  if (!falKey) throw new HttpError(503, "Virtual try-on is not set up yet. Add FAL_KEY in Netlify environment variables.");
+  const body = await readJson(req);
+  const productId = text(body.productId, 160, "Product ID");
+  const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(body.personImage ?? ""));
+  if (!match) throw new HttpError(400, "Please choose a JPG, PNG or WebP model photo");
+  if (match[1].length * 0.75 > MAX_TRY_ON_INPUT_BYTES) throw new HttpError(413, "The model photo is too large. Choose a smaller image.");
+
+  const [row] = await db
+    .select({ product: products, imageData: productImages.data, imageMimeType: productImages.mimeType })
+    .from(products)
+    .leftJoin(productImages, eq(productImages.productId, products.id))
+    .where(eq(products.id, productId));
+  if (!row) throw new HttpError(404, "Product not found");
+  if (!isSized(row.product.category)) throw new HttpError(400, "Virtual try-on is available for Tops and Bottoms only");
+  const coverPhoto = storedPhotos(row.imageMimeType, row.imageData)[0];
+  if (!coverPhoto) throw new HttpError(400, "Add a product photo before using Virtual Try-On");
+
+  const falResponse = await fetch(`https://queue.fal.run/${TRY_ON_ENDPOINT}`, {
+    method: "POST",
+    headers: { authorization: `Key ${falKey}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      person_image_url: `data:image/jpeg;base64,${match[1]}`,
+      clothing_image_url: `data:${coverPhoto.mimeType};base64,${coverPhoto.data}`,
+      preserve_pose: true,
+      aspect_ratio: "3:4",
+    }),
+  });
+  const queued = await falResponse.json().catch(() => ({}));
+  if (!falResponse.ok || typeof queued.request_id !== "string") {
+    console.error("Virtual try-on request could not be queued", falResponse.status);
+    throw new HttpError(502, "The AI service could not start the preview. Please try again later.");
+  }
+  return Response.json({ requestId: queued.request_id });
+}
+
+async function getTryOnStatus(id: string) {
+  const falKey = process.env.FAL_KEY;
+  if (!falKey) throw new HttpError(503, "Virtual try-on is not set up yet. Add FAL_KEY in Netlify environment variables.");
+  if (!/^[a-f0-9-]{20,64}$/i.test(id)) throw new HttpError(400, "Invalid preview request");
+  const base = `https://queue.fal.run/${TRY_ON_ENDPOINT}/requests/${encodeURIComponent(id)}`;
+  const statusResponse = await fetch(`${base}/status`, { headers: { authorization: `Key ${falKey}` } });
+  const status = await statusResponse.json().catch(() => ({}));
+  if (!statusResponse.ok) throw new HttpError(502, "Could not check the AI preview status. Please try again.");
+  if (status.status === "IN_QUEUE" || status.status === "IN_PROGRESS") return Response.json({ status: status.status });
+  if (status.status !== "COMPLETED" || status.error) {
+    return Response.json({ status: "FAILED", error: "The AI service could not create this preview. Try another photo." });
+  }
+  const resultResponse = await fetch(base, { headers: { authorization: `Key ${falKey}` } });
+  const result = await resultResponse.json().catch(() => ({}));
+  const imageUrl = result.images?.[0]?.url;
+  if (!resultResponse.ok || typeof imageUrl !== "string") {
+    throw new HttpError(502, "The AI preview finished but its image could not be retrieved.");
+  }
+  const parsedUrl = new URL(imageUrl);
+  if (parsedUrl.protocol !== "https:" || !(parsedUrl.hostname === "fal.media" || parsedUrl.hostname.endsWith(".fal.media"))) {
+    throw new HttpError(502, "The AI service returned an unsupported image link.");
+  }
+  return Response.json({ status: "COMPLETED", imageUrl }, { headers: { "cache-control": "no-store" } });
 }
 
 async function exportWorkbook(req: Request) {
@@ -560,14 +663,15 @@ async function exportWorkbook(req: Request) {
       updatedAt: product.updatedAt.toISOString(),
     });
     row.height = 64;
-    if (!imageData || !imageMimeType) continue;
-    const extension = imageMimeType === "image/jpeg" ? "jpeg" : imageMimeType === "image/png" ? "png" : null;
+    const coverPhoto = storedPhotos(imageMimeType, imageData)[0];
+    if (!coverPhoto) continue;
+    const extension = coverPhoto.mimeType === "image/jpeg" ? "jpeg" : coverPhoto.mimeType === "image/png" ? "png" : null;
     if (!extension) {
-      row.getCell("photoStatus").value = `Photo missing (unsupported ${imageMimeType})`;
+      row.getCell("photoStatus").value = `Photo missing (unsupported ${coverPhoto.mimeType})`;
       continue;
     }
     try {
-      const imageId = workbook.addImage({ base64: `data:${imageMimeType};base64,${imageData}`, extension });
+      const imageId = workbook.addImage({ base64: `data:${coverPhoto.mimeType};base64,${coverPhoto.data}`, extension });
       const rowNumber = row.number;
       inventory.addImage(imageId, {
         tl: { col: 0.08, row: rowNumber - 0.92 },
@@ -717,13 +821,16 @@ export default async (req: Request) => {
   try {
     if (resource === "state" && !id && method === "GET") return await getState();
     if (resource === "export.xlsx" && !id && method === "GET") return await exportWorkbook(req);
+    if (resource === "try-on" && !id && method === "POST") return await startTryOn(req);
+    if (resource === "try-on" && id && !sub && method === "GET") return await getTryOnStatus(id);
     if (resource === "import" && !id && method === "POST") return await importLocal(req);
-    if (resource === "images" && id && !sub && method === "GET") return await getImage(id);
+    if (resource === "images" && id && method === "GET") return await getImage(id, sub ? Math.max(0, Number.parseInt(sub, 10) || 0) : 0);
     if (resource === "products") {
       if (!id && method === "POST") return await createProduct(req);
       if (id && !sub && method === "PATCH") return await updateProduct(req, id);
       if (id && !sub && method === "DELETE") return await deleteProduct(id);
       if (id && sub === "image" && method === "PUT") return await putImage(req, id);
+      if (id && sub === "photos" && method === "POST") return await addProductPhoto(req, id);
     }
     if (resource === "settings" && id === "canva" && !sub && method === "PUT") return await putCanvaUrl(req);
     if (resource === "seeding") {
@@ -740,5 +847,5 @@ export default async (req: Request) => {
 };
 
 export const config: Config = {
-  path: ["/api/state", "/api/export.xlsx", "/api/import", "/api/images/:id", "/api/products", "/api/products/:id", "/api/products/:id/image", "/api/seeding", "/api/seeding/:id", "/api/settings/:key"],
+  path: ["/api/state", "/api/export.xlsx", "/api/try-on", "/api/try-on/:id", "/api/import", "/api/images/:id", "/api/images/:id/:index", "/api/products", "/api/products/:id", "/api/products/:id/image", "/api/products/:id/photos", "/api/seeding", "/api/seeding/:id", "/api/settings/:key"],
 };
