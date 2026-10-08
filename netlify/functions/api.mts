@@ -1,4 +1,5 @@
 import type { Config } from "@netlify/functions";
+import ExcelJS from "exceljs";
 import { randomBytes } from "node:crypto";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
@@ -497,6 +498,149 @@ async function getImage(id: string) {
   });
 }
 
+async function exportWorkbook(req: Request) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Inventory Stocks";
+  workbook.created = new Date();
+
+  const inventory = workbook.addWorksheet("Inventory");
+  inventory.columns = [
+    { header: "Product photo", key: "photo", width: 18 },
+    { header: "Photo status", key: "photoStatus", width: 18 },
+    { header: "Photo reference", key: "photoReference", width: 48 },
+    { header: "Product ID", key: "id", width: 24 },
+    { header: "Name", key: "name", width: 28 },
+    { header: "Price (RM)", key: "price", width: 14 },
+    { header: "SKU", key: "sku", width: 18 },
+    { header: "Quantity", key: "quantity", width: 12 },
+    { header: "Date", key: "date", width: 14 },
+    { header: "Gender", key: "gender", width: 14 },
+    { header: "Category", key: "category", width: 22 },
+    { header: "Size", key: "size", width: 12 },
+    { header: "Qty S", key: "qtyS", width: 10 },
+    { header: "Qty M", key: "qtyM", width: 10 },
+    { header: "Qty L", key: "qtyL", width: 10 },
+    { header: "Qty XL", key: "qtyXL", width: 10 },
+    { header: "Description", key: "description", width: 42 },
+    { header: "Created at", key: "createdAt", width: 24 },
+    { header: "Updated at", key: "updatedAt", width: 24 },
+  ];
+  inventory.views = [{ state: "frozen", ySplit: 1 }];
+  inventory.autoFilter = "A1:S1";
+
+  const productRows = await db
+    .select({ product: products, imageData: productImages.data, imageMimeType: productImages.mimeType })
+    .from(products)
+    .leftJoin(productImages, eq(productImages.productId, products.id))
+    .orderBy(asc(products.createdAt), asc(products.id));
+
+  const origin = new URL(req.url).origin;
+  for (const { product, imageData, imageMimeType } of productRows) {
+    const reference = `${origin}/api/images/${encodeURIComponent(product.id)}`;
+    const sizes = normalizeSizes(product.sizeQuantities);
+    const row = inventory.addRow({
+      photo: "",
+      photoStatus: "Photo missing",
+      photoReference: reference,
+      id: product.id,
+      name: product.name,
+      price: product.price == null ? "" : Number(product.price),
+      sku: product.sku,
+      quantity: product.quantity,
+      date: product.date ?? "",
+      gender: product.gender,
+      category: product.category,
+      size: product.size,
+      qtyS: sizes.S ?? 0,
+      qtyM: sizes.M ?? 0,
+      qtyL: sizes.L ?? 0,
+      qtyXL: sizes.XL ?? 0,
+      description: product.description,
+      createdAt: product.createdAt.toISOString(),
+      updatedAt: product.updatedAt.toISOString(),
+    });
+    row.height = 64;
+    if (!imageData || !imageMimeType) continue;
+    const extension = imageMimeType === "image/jpeg" ? "jpeg" : imageMimeType === "image/png" ? "png" : null;
+    if (!extension) {
+      row.getCell("photoStatus").value = `Photo missing (unsupported ${imageMimeType})`;
+      continue;
+    }
+    try {
+      const imageId = workbook.addImage({ base64: `data:${imageMimeType};base64,${imageData}`, extension });
+      const rowNumber = row.number;
+      inventory.addImage(imageId, {
+        tl: { col: 0.08, row: rowNumber - 0.92 },
+        ext: { width: 108, height: 68 },
+        editAs: "oneCell",
+      });
+      row.getCell("photoStatus").value = "Embedded";
+    } catch {
+      row.getCell("photoStatus").value = "Photo missing (could not embed)";
+    }
+  }
+
+  const seeding = workbook.addWorksheet("KOL Seeding");
+  seeding.columns = [
+    { header: "Record ID", key: "id", width: 24 },
+    { header: "KOL / Creator", key: "kolName", width: 26 },
+    { header: "Product ID", key: "productId", width: 24 },
+    { header: "Product", key: "productName", width: 30 },
+    { header: "SKU", key: "productSku", width: 18 },
+    { header: "Size", key: "size", width: 12 },
+    { header: "Quantity", key: "quantity", width: 12 },
+    { header: "Date sent", key: "dateSent", width: 14 },
+    { header: "Status", key: "returnStatus", width: 18 },
+    { header: "Return date", key: "returnDate", width: 14 },
+    { header: "Notes", key: "notes", width: 42 },
+    { header: "Created at", key: "createdAt", width: 24 },
+    { header: "Updated at", key: "updatedAt", width: 24 },
+  ];
+  seeding.views = [{ state: "frozen", ySplit: 1 }];
+  seeding.autoFilter = "A1:M1";
+  const seedingRows = await db.select().from(kolSeeding).orderBy(desc(kolSeeding.createdAt), desc(kolSeeding.id));
+  for (const record of seedingRows) {
+    seeding.addRow({
+      id: record.id,
+      kolName: record.kolName,
+      productId: record.productId ?? "",
+      productName: record.productName,
+      productSku: record.productSku,
+      size: record.size,
+      quantity: record.quantity,
+      dateSent: record.dateSent ?? "",
+      returnStatus: record.returnStatus,
+      returnDate: record.returnDate ?? "",
+      notes: record.notes,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+    });
+  }
+
+  for (const sheet of [inventory, seeding]) {
+    const header = sheet.getRow(1);
+    header.height = 28;
+    header.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FF3D392B" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF0B8" } };
+      cell.alignment = { vertical: "middle", wrapText: true };
+    });
+    sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      if (rowNumber === 1) return;
+      row.eachCell((cell) => { cell.alignment = { vertical: "middle", wrapText: true }; });
+    });
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return new Response(buffer, {
+    headers: {
+      "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "content-disposition": 'attachment; filename="inventory-stocks.xlsx"',
+      "cache-control": "no-store",
+    },
+  });
+}
+
 // One-time import of inventory saved in a browser. Only runs when the database has
 // no products and no history, and never overwrites an existing row.
 async function importLocal(req: Request) {
@@ -572,6 +716,7 @@ export default async (req: Request) => {
 
   try {
     if (resource === "state" && !id && method === "GET") return await getState();
+    if (resource === "export.xlsx" && !id && method === "GET") return await exportWorkbook(req);
     if (resource === "import" && !id && method === "POST") return await importLocal(req);
     if (resource === "images" && id && !sub && method === "GET") return await getImage(id);
     if (resource === "products") {
@@ -595,5 +740,5 @@ export default async (req: Request) => {
 };
 
 export const config: Config = {
-  path: ["/api/state", "/api/import", "/api/images/:id", "/api/products", "/api/products/:id", "/api/products/:id/image", "/api/seeding", "/api/seeding/:id", "/api/settings/:key"],
+  path: ["/api/state", "/api/export.xlsx", "/api/import", "/api/images/:id", "/api/products", "/api/products/:id", "/api/products/:id/image", "/api/seeding", "/api/seeding/:id", "/api/settings/:key"],
 };

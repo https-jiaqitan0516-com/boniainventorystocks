@@ -2,7 +2,8 @@
   "dependencies": {
     "@netlify/database": "^2.0.1",
     "@netlify/functions": "^6.0.2",
-    "drizzle-orm": "^1.0.0-beta.22"
+    "drizzle-orm": "^1.0.0-beta.22",
+    "exceljs": "^4.4.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

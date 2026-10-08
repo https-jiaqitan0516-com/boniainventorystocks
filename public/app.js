@@ -167,7 +167,18 @@ $('searchInput').addEventListener('input',render);$('sortSelect').addEventListen
 $('refreshBtn').onclick=async()=>{const btn=$('refreshBtn');if(btn.disabled)return;btn.disabled=true;btn.textContent='Refreshing…';try{const data=await api('/api/state');items=data.products;history=data.history;seeding=data.seeding||[];setCanva(data.canvaUrl);scheduleRender();checkImport();notify('Inventory, KOL Seeding and History refreshed')}catch(err){fail(err)}finally{btn.disabled=false;btn.textContent='Refresh'}};
 document.querySelectorAll('[data-history-toggle]').forEach(b=>b.onclick=()=>{$('historyPanel').hidden=!$('historyPanel').hidden;renderHistory()});$('closeHistory').onclick=()=>$('historyPanel').hidden=true;
 $('addBtn').onclick=async()=>{const btn=$('addBtn');btn.disabled=true;try{const {product,entry}=await api('/api/products',{method:'POST',body:{gender:genderFilter==='All'?'':genderFilter,category:categoryFilter==='All'?'':categoryFilter}});items.push(product);addHistory(entry);render();grid.querySelector(`input[data-id="${CSS.escape(product.id)}"][data-k="name"]`)?.focus()}catch(err){fail(err)}finally{btn.disabled=false}};
-$('exportBtn').onclick=()=>{if(!items.length){notify('No products to export');return}const data=[['Name','Price','SKU','Quantity','Date','Gender','Category','Size',...sizes.map(s=>`Qty ${s}`),'Description'],...items.map(x=>{const styling=sized(x),m=sizeMap(x),split=styling&&hasSizeQty(x);return [x.name,x.price,x.sku,x.quantity,x.date,x.gender,x.category,split?sizes.filter(s=>Number(m[s])>0).join(', '):(styling?x.size:''),...sizes.map(s=>split?Number(m[s])||0:''),x.description]})];const csv='﻿'+data.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='inventory.csv';a.click();URL.revokeObjectURL(url);notify('CSV exported')};
+$('exportBtn').onclick=async()=>{
+  const btn=$('exportBtn');btn.disabled=true;setSync('Preparing Excel…');
+  try{
+    const res=await fetch('/api/export.xlsx',{credentials:'same-origin',cache:'no-store'});
+    if(res.status===401){showLogin();return}
+    if(!res.ok){const data=await res.json().catch(()=>({}));throw new Error(data.error||'Could not export Excel')}
+    const blob=await res.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download='inventory-stocks.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    setSync('Excel downloaded');notify('Excel exported');
+  }catch(err){setSync('All changes saved');fail(err)}
+  finally{btn.disabled=false}
+};
 
 // ---- One-time import of this browser's saved inventory ----
 // Local data is never deleted; IMPORT_KEY only remembers that the import happened (or was declined).
