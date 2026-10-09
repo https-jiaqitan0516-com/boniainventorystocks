@@ -78,7 +78,8 @@ function updateSummary(){
   $('totalQty').textContent=items.reduce((sum,x)=>sum+(Number(x.quantity)||0),0).toLocaleString('en-US');
   $('totalValue').textContent=money(items.reduce((sum,x)=>sum+(Number(x.quantity)||0)*(Number(x.price)||0),0));
 }
-function addHistory(entry){if(entry){history.unshift(entry);history=history.slice(0,500)}renderHistory()}
+function addHistory(entry){const entries=Array.isArray(entry)?entry.filter(Boolean):entry?[entry]:[];if(entries.length){history=[...entries,...history].slice(0,500)}renderHistory()}
+function applyStockProducts(changes=[]){for(const p of changes){const current=items.find(x=>x.id===p.id);if(current){current.quantity=p.quantity;current.sizeQuantities=p.sizeQuantities||{}}}updateSummary();if(view==='inventory')scheduleRender()}
 // ---- History: one compact row per event; before/after details only when expanded ----
 const FIELD_LABELS={name:'Name',price:'Price',sku:'SKU',quantity:'Quantity',date:'Date',gender:'Gender',category:'Category',size:'Size',description:'Description',sizes:'Size quantities',canvaUrl:'Canva link',kolName:'KOL name',product:'Product',dateSent:'Date sent',returnStatus:'Return status',returnDate:'Return date',notes:'Notes'};
 const openHistory=new Set();
@@ -89,6 +90,7 @@ function historyWhen(at){const d=new Date(at);if(isNaN(d))return '';const date=d
 function changedKeys(h){if(!h.before||!h.after||typeof h.before!=='object'||typeof h.after!=='object')return[];return [...new Set([...Object.keys(h.before),...Object.keys(h.after)])].filter(k=>String(h.before[k]??'')!==String(h.after[k]??''))}
 function historySummary(h){
   const action=String(h.action||'');const keys=changedKeys(h);
+  const stockAction=action.match(/^(Sent to KOL|Returned from KOL seeding)(?: · (S|M|L|XL))?/);if(stockAction&&h.before&&h.after){const size=stockAction[2];const label=stockAction[1]==='Sent to KOL'?'Sent to KOL':'Returned to inventory';if(size){const a=parseSizes(h.before.sizes)[size]||0,b=parseSizes(h.after.sizes)[size]||0;return `${label} · ${size} ${a} → ${b}`}return `${label} · Quantity ${h.before.quantity??0} → ${h.after.quantity??0}`}
   const sm=action.match(/^Updated size (\w+) quantity$/);if(sm&&h.before&&h.after){const s=sm[1];return `Size ${s} ${parseSizes(h.before.sizes)[s]||0} → ${parseSizes(h.after.sizes)[s]||0}`}
   if(keys.length===1){const k=keys[0];return `${fieldLabel(k)} ${short(fieldVal(k,h.before[k]))} → ${short(fieldVal(k,h.after[k]))}`}
   if(keys.length>1)return `${keys.map(fieldLabel).join(', ')} changed`;
@@ -331,8 +333,8 @@ function renderSeeding(){
 }
 async function saveSeeding(id,field,value,old){
   const r=seedById(id);if(!r)return;
-  try{const {record,entry}=await api(`/api/seeding/${encodeURIComponent(id)}`,{method:'PATCH',body:{field,value}});const cur=seedById(id);if(cur)Object.assign(cur,record);addHistory(entry);scheduleRender()}
-  catch(err){const cur=seedById(id);if(cur)Object.assign(cur,old);fail(err);scheduleRender()}
+  try{const {record,entries,entry,stockProducts}=await api(`/api/seeding/${encodeURIComponent(id)}`,{method:'PATCH',body:{field,value}});const cur=seedById(id);if(cur)Object.assign(cur,record);applyStockProducts(stockProducts);addHistory(entries||entry);scheduleRender();return true}
+  catch(err){const cur=seedById(id);if(cur)Object.assign(cur,old);fail(err);scheduleRender();return false}
 }
 seedingGrid.addEventListener('focusin',e=>{const el=e.target;if(el.matches('[data-sid][data-sk]'))el.dataset.beforeValue=String(seedById(el.dataset.sid)?.[el.dataset.sk]??'')});
 seedingGrid.addEventListener('input',e=>{const el=e.target;if(!el.matches('[data-sid][data-sk]')||el.tagName==='SELECT')return;const r=seedById(el.dataset.sid);if(r)r[el.dataset.sk]=el.value});
@@ -346,14 +348,14 @@ seedingGrid.addEventListener('change',e=>{const el=e.target;
 });
 seedingGrid.addEventListener('click',async e=>{
   const v=e.target.closest('[data-view]');if(v){openViewer(v.dataset.view);return}
-  const ret=e.target.closest('[data-return]');if(ret){const id=ret.dataset.return,r=seedById(id);if(!r)return;const prev={...r};r.returnStatus='Returned';renderSeeding();saveSeeding(id,'returnStatus','Returned',prev);notify('Marked as returned');return}
+  const ret=e.target.closest('[data-return]');if(ret){const id=ret.dataset.return,r=seedById(id);if(!r)return;const prev={...r};r.returnStatus='Returned';renderSeeding();if(await saveSeeding(id,'returnStatus','Returned',prev))notify('Returned item added back to inventory');return}
   const d=e.target.closest('[data-sdelete]');if(!d)return;const id=d.dataset.sdelete,r=seedById(id);if(!r)return;
   if(!confirm(`Delete the seeding record for “${r.kolName||'Unnamed KOL'}” for everyone?`))return;
-  try{const {entry}=await api(`/api/seeding/${encodeURIComponent(id)}`,{method:'DELETE'});seeding=seeding.filter(x=>x.id!==id);addHistory(entry);renderSeeding();notify('Seeding record deleted')}catch(err){fail(err)}
+  try{const {entries,entry,stockProducts}=await api(`/api/seeding/${encodeURIComponent(id)}`,{method:'DELETE'});seeding=seeding.filter(x=>x.id!==id);applyStockProducts(stockProducts);addHistory(entries||entry);renderSeeding();notify('Seeding record deleted')}catch(err){fail(err)}
 });
 $('seedingSearch').addEventListener('input',renderSeeding);$('seedingSort').addEventListener('change',e=>{seedingSort=e.target.value;renderSeeding()});
 $('addSeedingBtn').onclick=async()=>{const btn=$('addSeedingBtn');btn.disabled=true;
-  try{const {record,entry}=await api('/api/seeding',{method:'POST',body:{quantity:1}});seeding.unshift(record);addHistory(entry);
+  try{const {record,entries,entry,stockProducts}=await api('/api/seeding',{method:'POST',body:{quantity:1}});seeding.unshift(record);applyStockProducts(stockProducts);addHistory(entries||entry);
     if(seedingSort!=='sent-desc'){seedingSort='sent-desc';$('seedingSort').value='sent-desc'}$('seedingSearch').value='';renderSeeding();seedingGrid.querySelector(`[data-sid="${CSS.escape(record.id)}"][data-sk="kolName"]`)?.focus()}
   catch(err){fail(err)}finally{btn.disabled=false}};
 
