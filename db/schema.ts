@@ -1,4 +1,4 @@
-import { pgTable, text, integer, numeric, date, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, numeric, date, timestamp, jsonb, index, boolean } from "drizzle-orm/pg-core";
 
 export const products = pgTable("products", {
   id: text().primaryKey(),
@@ -58,6 +58,10 @@ export const kolSeeding = pgTable(
     returnStatus: text("return_status").notNull().default("Not returned"),
     returnDate: date("return_date", { mode: "string" }),
     notes: text().notNull().default(""),
+    // Only records created after stock tracking is enabled affect inventory.
+    // Existing seeding rows remain untouched when the migration is applied.
+    stockManaged: boolean("stock_managed").notNull().default(false),
+    stockDeducted: boolean("stock_deducted").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

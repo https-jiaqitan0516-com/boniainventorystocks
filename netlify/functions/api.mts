@@ -335,6 +335,66 @@ async function normalizeSeedingField(field: string, value: unknown): Promise<See
   throw new HttpError(400, "Unknown field");
 }
 
+// New seeding rows reserve stock while they are out with a KOL. Legacy rows
+// stay unmanaged so enabling this feature never changes existing inventory.
+async function syncSeedingStock(tx: any, oldRow: SeedingRow | null, nextRow: SeedingRow | null, deleting = false) {
+  const oldActive = !!oldRow?.stockManaged && !!oldRow.stockDeducted && oldRow.returnStatus !== "Returned" && !(deleting && oldRow.returnStatus === "Kept by KOL") && !!oldRow.productId && oldRow.quantity > 0;
+  const nextActive = !!nextRow?.stockManaged && nextRow.returnStatus !== "Returned" && !!nextRow.productId && nextRow.quantity > 0;
+  const ids = [...new Set([oldActive ? oldRow!.productId! : "", nextActive ? nextRow!.productId! : ""].filter(Boolean))].sort();
+  const locked = ids.length
+    ? await tx.select().from(products).where(sql`${products.id} in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`).orderBy(asc(products.id)).for("update")
+    : [];
+  const productById = new Map<string, ProductRow>(locked.map((p: ProductRow) => [p.id, p]));
+  const deltas = new Map<string, { productId: string; size: string; delta: number }>();
+
+  const allocation = (row: SeedingRow, sign: number) => {
+    if (!row.productId || row.quantity <= 0) return;
+    const product = productById.get(row.productId);
+    if (!product) return;
+    // Sized products are only deducted once a size has been chosen.
+    const size = isSized(product.category) ? row.size : "";
+    if (isSized(product.category) && !size) return;
+    const key = `${product.id}\u0000${size}`;
+    const existing = deltas.get(key) || { productId: product.id, size, delta: 0 };
+    existing.delta += sign * row.quantity;
+    deltas.set(key, existing);
+  };
+  if (oldActive) allocation(oldRow!, 1);
+  if (nextActive) allocation(nextRow!, -1);
+
+  const entries: (typeof history.$inferSelect)[] = [];
+  const stockProducts: { id: string; quantity: number; sizeQuantities: Record<string, number> }[] = [];
+  for (const { productId, size, delta } of deltas.values()) {
+    if (!delta) continue;
+    const before = productById.get(productId)!;
+    let patch: Partial<ProductRow>;
+    if (size) {
+      const sizes = normalizeSizes(before.sizeQuantities);
+      const quantity = (sizes[size] || 0) + delta;
+      if (quantity < 0) throw new HttpError(409, `Not enough ${size} stock for ${displayName(before)}. Available: ${sizes[size] || 0}`);
+      if (quantity) sizes[size] = quantity;
+      else delete sizes[size];
+      patch = { sizeQuantities: sizes, quantity: sumSizes(sizes), updatedAt: new Date() };
+    } else {
+      const quantity = before.quantity + delta;
+      if (quantity < 0) throw new HttpError(409, `Not enough stock for ${displayName(before)}. Available: ${before.quantity}`);
+      patch = { quantity, updatedAt: new Date() };
+    }
+    const [after] = await tx.update(products).set(patch).where(eq(products.id, productId)).returning();
+    productById.set(productId, after);
+    stockProducts.push({ id: after.id, quantity: after.quantity, sizeQuantities: normalizeSizes(after.sizeQuantities) });
+    const [entry] = await tx.insert(history).values({
+      id: uid(), action: delta > 0 ? `Returned from KOL seeding${size ? ` · ${size}` : ""}` : `Sent to KOL${size ? ` · ${size}` : ""}`,
+      itemId: productId, name: displayName(after), before: snapshot(before), after: snapshot(after),
+    }).returning();
+    entries.push(entry);
+  }
+
+  const nextProduct = nextActive ? productById.get(nextRow!.productId!) : undefined;
+  const row = nextRow ? { ...nextRow, stockDeducted: !!nextProduct && (!isSized(nextProduct.category) || !!nextRow.size) && nextActive } : null;
+  return { row, entries: entries.map(historyToClient), stockProducts };
+}
+
 async function createSeeding(req: Request) {
   const body = await readJson(req);
   const values: SeedingValues = { dateSent: today() };
@@ -343,12 +403,14 @@ async function createSeeding(req: Request) {
     if (field in body) Object.assign(values, await normalizeSeedingField(field, body[field]));
   }
   return db.transaction(async (tx) => {
-    const [row] = await tx.insert(kolSeeding).values({ id: uid(), ...values }).returning();
+    const [row] = await tx.insert(kolSeeding).values({ id: uid(), stockManaged: true, stockDeducted: false, ...values }).returning();
+    const { row: allocated, entries: stockEntries, stockProducts } = await syncSeedingStock(tx, null, row);
+    if (!allocated) throw new Error("Could not create KOL seeding record");
     const [entry] = await tx
       .insert(history)
-      .values({ id: uid(), action: "Added KOL seeding", itemId: row.id, name: seedingName(row), before: null, after: seedingSnapshot(row) })
+      .values({ id: uid(), action: "Added KOL seeding", itemId: allocated.id, name: seedingName(allocated), before: null, after: seedingSnapshot(allocated) })
       .returning();
-    return Response.json({ record: seedingToClient(row), entry: historyToClient(entry) }, { status: 201 });
+    return Response.json({ record: seedingToClient(allocated), entry: historyToClient(entry), entries: [historyToClient(entry), ...stockEntries], stockProducts }, { status: 201 });
   });
 }
 
@@ -363,9 +425,16 @@ async function updateSeeding(req: Request, id: string) {
     if (!current) throw new HttpError(404, "KOL seeding record not found");
     // Marking an item as returned fills in today's date if no return date was entered yet.
     if (field === "returnStatus" && values.returnStatus === "Returned" && !current.returnDate) values.returnDate = today();
+    let candidate = { ...current, ...values };
+    if (field === "productId" && candidate.productId) {
+      const [product] = await tx.select().from(products).where(eq(products.id, candidate.productId)).for("update");
+      if (!product) throw new HttpError(404, "Product not found");
+      candidate = { ...candidate, productName: product.name, productSku: product.sku, ...(!isSized(product.category) ? { size: "" } : {}) };
+    }
+    const { row: allocated, entries: stockEntries, stockProducts } = await syncSeedingStock(tx, current, candidate);
     const [row] = await tx
       .update(kolSeeding)
-      .set({ ...values, updatedAt: new Date() })
+      .set({ ...allocated!, updatedAt: new Date() })
       .where(eq(kolSeeding.id, id))
       .returning();
     const before = seedingSnapshot(current);
@@ -377,19 +446,21 @@ async function updateSeeding(req: Request, id: string) {
         .values({ id: uid(), action: `Updated KOL seeding ${SEEDING_LABELS[field]}`, itemId: id, name: seedingName(row), before, after })
         .returning();
     }
-    return Response.json({ record: seedingToClient(row), entry: entry && historyToClient(entry) });
+    return Response.json({ record: seedingToClient(row), entry: entry && historyToClient(entry), entries: [...(entry ? [historyToClient(entry)] : []), ...stockEntries], stockProducts });
   });
 }
 
 async function deleteSeeding(id: string) {
   return db.transaction(async (tx) => {
+    const [current] = await tx.select().from(kolSeeding).where(eq(kolSeeding.id, id)).for("update");
+    if (!current) throw new HttpError(404, "KOL seeding record not found");
+    const { entries: stockEntries, stockProducts } = await syncSeedingStock(tx, current, null, true);
     const [row] = await tx.delete(kolSeeding).where(eq(kolSeeding.id, id)).returning();
-    if (!row) throw new HttpError(404, "KOL seeding record not found");
     const [entry] = await tx
       .insert(history)
       .values({ id: uid(), action: "Deleted KOL seeding", itemId: id, name: seedingName(row), before: seedingSnapshot(row), after: null })
       .returning();
-    return Response.json({ entry: historyToClient(entry) });
+    return Response.json({ entry: historyToClient(entry), entries: [historyToClient(entry), ...stockEntries], stockProducts });
   });
 }
 
