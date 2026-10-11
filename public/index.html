@@ -234,3 +234,15 @@
 #stylingView .styling-options{max-height:min(38vh,320px)!important}
 @media(max-width:700px){#stylingView .styling-layout{grid-template-columns:minmax(0,1fr)!important;gap:8px!important}#stylingView .styling-stage{grid-column:1!important;grid-row:1!important}#stylingView .styling-board{height:205px!important;padding:6px!important}#stylingView .styling-options{max-height:155px!important}#stylingView .styling-panel,#stylingView .styling-stage{padding:9px!important}}
 </style>
+
+<style>
+/* Arrange clothes on the left and the bag on the right, like the reference. */
+#stylingView .styling-board{position:relative!important;min-height:0!important;height:250px!important}
+#stylingView #stylingLayers{position:relative!important;width:100%!important;height:100%!important;min-height:0!important}
+#stylingView #stylingLayers img[alt*="mannequin" i]{display:none!important}
+#stylingView .styling-layer.top{left:3%!important;top:2%!important;width:49%!important;height:46%!important;object-fit:contain!important}
+#stylingView .styling-layer.bottom{left:3%!important;top:52%!important;width:49%!important;height:46%!important;object-fit:contain!important}
+#stylingView .styling-layer.extra{left:56%!important;top:28%!important;width:42%!important;height:45%!important;object-fit:contain!important}
+#stylingView .styling-layer.dress{left:3%!important;top:2%!important;width:49%!important;height:96%!important;object-fit:contain!important}
+@media(max-width:700px){#stylingView .styling-board{height:205px!important}}
+</style>
