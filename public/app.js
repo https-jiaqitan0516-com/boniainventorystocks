@@ -397,3 +397,6 @@ function renderStyling(){
 }
 $('stylingView').addEventListener('click',e=>{const option=e.target.closest('[data-style-slot]');if(!option)return;const slot=option.dataset.styleSlot;if(slot==='dress'){stylingDressState.top='';stylingDressState.bottom=''}else if(slot==='top'||slot==='bottom')stylingDressState.dress='';renderStyling()});
 $('stylingClear').onclick=()=>{stylingDressState.top='';stylingDressState.bottom='';stylingDressState.dress='';stylingDressState.extra='';renderStyling()};
+
+// Include one-piece dresses in inventory and size tracking.
+categories.push('Dresses');sizedCategories.push('Dresses');
