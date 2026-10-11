@@ -912,3 +912,8 @@ export default async (req: Request) => {
 export const config: Config = {
   path: ["/api/state", "/api/export.xlsx", "/api/try-on", "/api/try-on/:id", "/api/import", "/api/images/:id", "/api/images/:id/:index", "/api/products", "/api/products/:id", "/api/products/:id/image", "/api/products/:id/photos", "/api/seeding", "/api/seeding/:id", "/api/settings/:key"],
 };
+
+
+// Accept Dresses as a product category with S/M/L/XL quantity tracking.
+CATEGORIES.push("Dresses");
+SIZED_CATEGORIES.push("Dresses");
