@@ -377,3 +377,23 @@ renderCanva();
 
 let timer;function notify(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(timer);timer=setTimeout(()=>t.classList.remove('show'),2600)}
 start();
+
+
+// Styling Board layout: stack clothing and keep a bag/accessory at the right.
+const stylingDressState=styledLook;stylingDressState.dress=stylingDressState.dress||'';
+function renderStyling(){
+ const clothingTabs=$('stylingClothingTabs'),extraTabs=$('stylingExtraTabs');
+ clothingTabs.innerHTML='';['Tops','Bottoms','Dresses'].forEach(c=>{const b=document.createElement('button');b.type='button';b.className='styling-tab'+(clothingCategory===c?' active':'');b.textContent=c;b.onclick=()=>{clothingCategory=c;renderStyling()};clothingTabs.appendChild(b)});
+ extraTabs.innerHTML='';['Bags','Accessories'].forEach(c=>{const b=document.createElement('button');b.type='button';b.className='styling-tab'+(extraCategory===c?' active':'');b.textContent=c;b.onclick=()=>{extraCategory=c;renderStyling()};extraTabs.appendChild(b)});
+ const clothing=items.filter(p=>p.category===clothingCategory&&p.image).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+ const extras=items.filter(p=>p.category===extraCategory&&p.image).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+ const clothingSlot=clothingCategory==='Tops'?'top':clothingCategory==='Bottoms'?'bottom':'dress';
+ $('stylingClothingOptions').innerHTML=clothing.length?clothing.map(p=>`<button type="button" class="styling-option${stylingDressState[clothingSlot]===p.id?' selected':''}" data-style-id="${esc(p.id)}" data-style-slot="${clothingSlot}"><img src="${esc(p.image)}" alt=""><span><b>${esc(p.name||'Untitled product')}</b><small>${esc(p.sku||p.gender||p.category)}</small></span></button>`).join(''):'<div class="styling-empty">No product photos in this category yet. Add a product photo in Inventory first.</div>';
+ $('stylingExtraOptions').innerHTML=extras.length?extras.map(p=>`<button type="button" class="styling-option${stylingDressState.extra===p.id?' selected':''}" data-style-id="${esc(p.id)}" data-style-slot="extra"><img src="${esc(p.image)}" alt=""><span><b>${esc(p.name||'Untitled product')}</b><small>${esc(p.sku||p.gender||p.category)}</small></span></button>`).join(''):'<div class="styling-empty">No product photos in this category yet. Add a product photo in Inventory first.</div>';
+ const boardItem=(slot,label,kind='')=>{const p=byId(stylingDressState[slot]);return `<div class="styling-flat-item ${kind}"><span class="styling-flat-label">${label}</span>${p?.image?`<img src="${esc(p.image)}" alt="${esc(p.name||label)}">`:`<span class="styling-flat-placeholder">Choose ${label.toLowerCase()}</span>`}${p?`<b>${esc(p.name||p.category)}</b>`:''}</div>`};
+ const clothes=stylingDressState.dress?boardItem('dress','Dress'):boardItem('top','Top')+boardItem('bottom','Bottom');
+ $('stylingLayers').innerHTML=clothes+boardItem('extra',extraCategory==='Bags'?'Bag':'Accessory');
+ const slots=stylingDressState.dress?['dress','extra']:['top','bottom','extra'];$('stylingSelections').innerHTML=slots.map(slot=>{const p=byId(stylingDressState[slot]);return p?`<span class="styling-chip">${esc(p.name||p.category)}<button type="button" data-style-remove="${slot}" aria-label="Remove ${esc(p.name||p.category)}">×</button></span>`:''}).join('');
+}
+$('stylingView').addEventListener('click',e=>{const option=e.target.closest('[data-style-slot]');if(!option)return;const slot=option.dataset.styleSlot;if(slot==='dress'){stylingDressState.top='';stylingDressState.bottom=''}else if(slot==='top'||slot==='bottom')stylingDressState.dress='';renderStyling()});
+$('stylingClear').onclick=()=>{stylingDressState.top='';stylingDressState.bottom='';stylingDressState.dress='';stylingDressState.extra='';renderStyling()};
