@@ -223,3 +223,14 @@
 .styling-flat-item:nth-child(2):last-child img{height:190px}
 @media(max-width:560px){.styling-board{min-height:330px;padding:9px}.styling-flatlay{grid-template-columns:minmax(0,1.2fr) minmax(86px,.8fr);gap:7px;min-height:310px}.styling-flat-item{padding:7px 4px;gap:5px}.styling-flat-item img{height:132px}.styling-flat-item:nth-child(2):last-child img{height:150px}.styling-flat-label,.styling-flat-item b{font-size:9px}}
 </style>
+
+<style>
+/* Compact outfit frame: show the complete flat lay without a mannequin. */
+#stylingView .styling-stage{min-width:0!important}
+#stylingView .styling-board{min-height:0!important;height:250px!important;padding:8px!important;margin:6px auto!important;overflow:hidden!important}
+#stylingView #stylingLayers{height:100%!important;min-height:0!important;max-height:100%!important;overflow:hidden!important}
+#stylingView img[alt*="mannequin" i]{display:none!important}
+#stylingView #stylingLayers img:not([alt*="mannequin" i]){max-height:105px!important;object-fit:contain!important}
+#stylingView .styling-options{max-height:min(38vh,320px)!important}
+@media(max-width:700px){#stylingView .styling-layout{grid-template-columns:minmax(0,1fr)!important;gap:8px!important}#stylingView .styling-stage{grid-column:1!important;grid-row:1!important}#stylingView .styling-board{height:205px!important;padding:6px!important}#stylingView .styling-options{max-height:155px!important}#stylingView .styling-panel,#stylingView .styling-stage{padding:9px!important}}
+</style>
